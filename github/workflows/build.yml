@@ -1,0 +1,54 @@
+name: Build Transition FX
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  macos:
+    name: macOS (VST3 + AU)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone JUCE 8.0.7
+        run: git clone --depth 1 --branch 8.0.7 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShiftFXPro-macOS-VST3
+          path: build/ShiftFxPro_artefacts/Release/VST3/SHIFT FX PRO.vst3
+
+      - name: Upload AU
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShiftFXPro-macOS-AU
+          path: build/ShiftFxPro_artefacts/Release/AU/SHIFT FX PRO.component
+
+  windows:
+    name: Windows (VST3)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone JUCE 8.0.7
+        run: git clone --depth 1 --branch 8.0.7 https://github.com/juce-framework/JUCE.git JUCE
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShiftFXPro-Windows-VST3
+          path: build/ShiftFxPro_artefacts/Release/VST3/SHIFT FX PRO.vst3
