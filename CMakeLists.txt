@@ -74,6 +74,8 @@ target_link_libraries(ShiftFxQA PRIVATE
 )
 
 #---- Offscreen UI render (dev tool: real editor -> PNG, no display needed) ----
+# Linux/macOS only: uses execinfo.h / Xvfb; not needed for shipped builds.
+if(NOT WIN32)
 add_executable(ShiftFxShot
     qa/shot_main.cpp
     Source/PluginProcessor.cpp
@@ -91,3 +93,4 @@ target_link_libraries(ShiftFxShot PRIVATE
     juce::juce_recommended_config_flags
     juce::juce_recommended_warning_flags
 )
+endif()
