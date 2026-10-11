@@ -62,7 +62,31 @@ void TfxKnob::mouseDown (const juce::MouseEvent& e)
     if (learnMode && learnIdx >= 0 && onLearnArm) { onLearnArm (learnIdx); return; }
     dragStartVal = value;
     dragStartY = e.y;
-    setMouseCursor (juce::MouseCursor::NoCursor);
+    // NB: a previous version hid the cursor here with NoCursor and never
+    // restored it, which made the pointer vanish over the knob after the
+    // first drag ("mouse goes behind it"). The cursor now stays visible.
+}
+
+void TfxKnob::mouseUp (const juce::MouseEvent&)
+{
+    setMouseCursor (juce::MouseCursor::NormalCursor);
+}
+
+void TfxKnob::mouseEnter (const juce::MouseEvent&)
+{
+    if (! learnMode)
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+}
+
+void TfxKnob::mouseExit (const juce::MouseEvent&)
+{
+    setMouseCursor (juce::MouseCursor::NormalCursor);
+}
+
+void TfxKnob::mouseDoubleClick (const juce::MouseEvent&)
+{
+    if (learnMode && learnIdx >= 0 && onLearnArm) return; // don't reset while arming
+    setValue (defaultValue);
 }
 
 void TfxKnob::mouseDrag (const juce::MouseEvent& e)
@@ -79,18 +103,19 @@ void TfxKnob::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDet
 
 void TfxKnob::paint (juce::Graphics& g)
 {
+    const float ui = (float) getWidth() / (diameter + 16.0f); // 1.0 at design size
     const float cx = getWidth() * 0.5f, cy = getHeight() * 0.5f;
-    const float r = diameter * 0.5f;
+    const float r = diameter * 0.5f * ui;
 
     if (learnHighlight)
     {
         g.setColour (cGreen.withAlpha (0.35f));
-        g.drawEllipse (cx - r - 7, cy - r - 7, (r + 7) * 2, (r + 7) * 2, 3.0f);
+        g.drawEllipse (cx - r - 7 * ui, cy - r - 7 * ui, (r + 7 * ui) * 2, (r + 7 * ui) * 2, 3.0f * ui);
     }
     else if (learnMode && learnIdx >= 0)
     {
         g.setColour (cGreen.withAlpha (0.15f));
-        g.drawEllipse (cx - r - 7, cy - r - 7, (r + 7) * 2, (r + 7) * 2, 2.0f);
+        g.drawEllipse (cx - r - 7 * ui, cy - r - 7 * ui, (r + 7 * ui) * 2, (r + 7 * ui) * 2, 2.0f * ui);
     }
 
     // value arc
@@ -98,12 +123,12 @@ void TfxKnob::paint (juce::Graphics& g)
     const float va = a0 + value * (a1 - a0);
     g.setColour (accent.withAlpha (0.9f));
     juce::Path arc;
-    arc.addCentredArc (cx, cy, r + 5, r + 5, 0.0f, a0, va, true);
-    g.strokePath (arc, juce::PathStrokeType (3.0f));
+    arc.addCentredArc (cx, cy, r + 5 * ui, r + 5 * ui, 0.0f, a0, va, true);
+    g.strokePath (arc, juce::PathStrokeType (3.0f * ui));
     g.setColour (cEdge);
     juce::Path rest;
-    rest.addCentredArc (cx, cy, r + 5, r + 5, 0.0f, va, a1, true);
-    g.strokePath (rest, juce::PathStrokeType (3.0f));
+    rest.addCentredArc (cx, cy, r + 5 * ui, r + 5 * ui, 0.0f, va, a1, true);
+    g.strokePath (rest, juce::PathStrokeType (3.0f * ui));
 
     // metallic body
     juce::ColourGradient grad (juce::Colour (0xff3a4150), cx - r * 0.5f, cy - r * 0.6f,
@@ -112,14 +137,15 @@ void TfxKnob::paint (juce::Graphics& g)
     g.setGradientFill (grad);
     g.fillEllipse (cx - r, cy - r, r * 2, r * 2);
     g.setColour (cEdge.brighter (0.15f));
-    g.drawEllipse (cx - r, cy - r, r * 2, r * 2, 1.5f);
+    g.drawEllipse (cx - r, cy - r, r * 2, r * 2, 1.5f * ui);
 
     // pointer line
     const float pa = -juce::MathConstants<float>::pi * 0.75f + value * juce::MathConstants<float>::pi * 1.5f;
     const float px = cx + std::cos (pa) * r * 0.78f, py = cy + std::sin (pa) * r * 0.78f;
     g.setColour (juce::Colours::white);
-    g.drawLine (cx, cy, px, py, 3.0f);
-    g.fillEllipse (cx - 3, cy - 3, 6, 6);
+    g.drawLine (cx, cy, px, py, 3.0f * ui);
+    const float dotR = 3.0f * ui;
+    g.fillEllipse (cx - dotR, cy - dotR, dotR * 2, dotR * 2);
 }
 
 //==============================================================================
@@ -162,6 +188,17 @@ void PresetWheel::mouseDrag (const juce::MouseEvent& e)
     setPreset (dragStartPreset + steps);
 }
 
+void PresetWheel::mouseEnter (const juce::MouseEvent&)
+{
+    if (! learnMode)
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+}
+
+void PresetWheel::mouseExit (const juce::MouseEvent&)
+{
+    setMouseCursor (juce::MouseCursor::NormalCursor);
+}
+
 void PresetWheel::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
 {
     const int dir = (w.deltaY > 0 ? -1 : 1) * (w.isReversed ? -1 : 1);
@@ -170,34 +207,38 @@ void PresetWheel::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWhee
 
 void PresetWheel::paint (juce::Graphics& g)
 {
-    const float cx = getWidth() * 0.5f, cy = getHeight() * 0.5f + 6.0f;
-    const float knobR = 95.0f, dotR = 125.0f, labelR = 150.0f;
+    // ui scale: 1.0 when the wheel is at its design width (580px).
+    const float ui = (float) getWidth() / 580.0f;
+    const float cx = getWidth() * 0.5f, cy = getHeight() * 0.5f + 6.0f * ui;
+    const float knobR = 95.0f * ui, dotR = 125.0f * ui, labelR = 150.0f * ui;
 
     if (learnHighlight)
     {
         g.setColour (cGreen.withAlpha (0.4f));
-        g.drawEllipse (cx - knobR - 10, cy - knobR - 10, (knobR + 10) * 2, (knobR + 10) * 2, 3.0f);
+        g.drawEllipse (cx - knobR - 10 * ui, cy - knobR - 10 * ui,
+                       (knobR + 10 * ui) * 2, (knobR + 10 * ui) * 2, 3.0f * ui);
     }
     else if (learnMode && learnIdx >= 0)
     {
         g.setColour (cGreen.withAlpha (0.15f));
-        g.drawEllipse (cx - knobR - 10, cy - knobR - 10, (knobR + 10) * 2, (knobR + 10) * 2, 2.0f);
+        g.drawEllipse (cx - knobR - 10 * ui, cy - knobR - 10 * ui,
+                       (knobR + 10 * ui) * 2, (knobR + 10 * ui) * 2, 2.0f * ui);
     }
 
     // decorative half arcs: blue left, orange right
     // (startAsSubPath=true so no stray line is drawn from the origin)
     g.setColour (cBlue.withAlpha (0.55f));
     juce::Path leftArc;
-    leftArc.addCentredArc (cx, cy, knobR + 14, knobR + 14, 0.0f,
+    leftArc.addCentredArc (cx, cy, knobR + 14 * ui, knobR + 14 * ui, 0.0f,
                            juce::MathConstants<float>::pi * 0.5f,
                            juce::MathConstants<float>::pi * 1.5f, true);
-    g.strokePath (leftArc, juce::PathStrokeType (4.0f));
+    g.strokePath (leftArc, juce::PathStrokeType (4.0f * ui));
     g.setColour (cOrange.withAlpha (0.55f));
     juce::Path rightArc;
-    rightArc.addCentredArc (cx, cy, knobR + 14, knobR + 14, 0.0f,
+    rightArc.addCentredArc (cx, cy, knobR + 14 * ui, knobR + 14 * ui, 0.0f,
                             -juce::MathConstants<float>::pi * 0.5f,
                             juce::MathConstants<float>::pi * 0.5f, true);
-    g.strokePath (rightArc, juce::PathStrokeType (4.0f));
+    g.strokePath (rightArc, juce::PathStrokeType (4.0f * ui));
 
     // knob body
     juce::ColourGradient grad (juce::Colour (0xff454e60), cx - knobR * 0.5f, cy - knobR * 0.6f,
@@ -206,19 +247,24 @@ void PresetWheel::paint (juce::Graphics& g)
     g.setGradientFill (grad);
     g.fillEllipse (cx - knobR, cy - knobR, knobR * 2, knobR * 2);
     g.setColour (cEdge.brighter (0.2f));
-    g.drawEllipse (cx - knobR, cy - knobR, knobR * 2, knobR * 2, 2.0f);
+    g.drawEllipse (cx - knobR, cy - knobR, knobR * 2, knobR * 2, 2.0f * ui);
     // inner bevel ring
     g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.drawEllipse (cx - knobR + 10, cy - knobR + 10, (knobR - 10) * 2, (knobR - 10) * 2, 2.0f);
+    const float bev = 10.0f * ui;
+    g.drawEllipse (cx - knobR + bev, cy - knobR + bev,
+                   (knobR - bev) * 2, (knobR - bev) * 2, 2.0f * ui);
 
     // pointer to selected detent
     const float pa = detentAngle (preset);
     g.setColour (juce::Colours::white);
-    g.drawLine (cx, cy, cx + std::cos (pa) * (knobR - 14), cy + std::sin (pa) * (knobR - 14), 4.0f);
+    g.drawLine (cx, cy, cx + std::cos (pa) * (knobR - 14 * ui),
+                cy + std::sin (pa) * (knobR - 14 * ui), 4.0f * ui);
 
     // bright marker at the selected detent on the ring
     g.setColour (cBlue);
-    g.fillEllipse (cx + std::cos (pa) * (knobR + 14) - 4, cy + std::sin (pa) * (knobR + 14) - 4, 8, 8);
+    const float mk = 4.0f * ui;
+    g.fillEllipse (cx + std::cos (pa) * (knobR + 14 * ui) - mk,
+                   cy + std::sin (pa) * (knobR + 14 * ui) - mk, mk * 2, mk * 2);
 
     // dots mark every detent (selected dot is white; the pointer + bright
     // marker drawn above also indicate the selected detent)
@@ -231,8 +277,9 @@ void PresetWheel::paint (juce::Graphics& g)
         const bool selected = (i == preset);
 
         const float dx = cx + ca * dotR, dy = cy + sa * dotR;
+        const float dr = 3.0f * ui;
         g.setColour (selected ? juce::Colours::white : dotCol.withAlpha (0.85f));
-        g.fillEllipse (dx - 3, dy - 3, 6, 6);
+        g.fillEllipse (dx - dr, dy - dr, dr * 2, dr * 2);
     }
 
     // Static label ring. The selected preset's name is already shown glowing in
@@ -247,41 +294,42 @@ void PresetWheel::paint (juce::Graphics& g)
         const float a = detentAngle (idx);
         const float ca = std::cos (a), sa = std::sin (a);
         just = juce::Justification::centred;
-        float txOff = -80.0f, tw = 160.0f;
-        if (ca < -0.35f)      { just = juce::Justification::centredRight; txOff = -150.0f; tw = 145.0f; }
-        else if (ca > 0.35f)  { just = juce::Justification::centredLeft;  txOff = 5.0f;    tw = 145.0f; }
-        return juce::Rectangle<float> (cx + ca * lr + txOff, cy + sa * lr - 10.0f, tw, 20.0f);
+        float txOff = -80.0f * ui, tw = 160.0f * ui;
+        if (ca < -0.35f)      { just = juce::Justification::centredRight; txOff = -150.0f * ui; tw = 145.0f * ui; }
+        else if (ca > 0.35f)  { just = juce::Justification::centredLeft;  txOff = 5.0f * ui;    tw = 145.0f * ui; }
+        return juce::Rectangle<float> (cx + ca * lr + txOff, cy + sa * lr - 10.0f * ui, tw, 20.0f * ui);
     };
 
-    g.setFont (fontPlain (12.0f));
+    g.setFont (fontPlain (12.0f * ui));
     g.setColour (cDim);
     juce::Rectangle<float> prevBox;
     bool havePrev = false;
     for (int k = 0; k < 22; ++k)
     {
         const int i = (preset + 1 + k) % 23; // every detent except the selected one
-        float lr = labelR + ((i % 2 == 0) ? 0.0f : 20.0f);
+        float lr = labelR + ((i % 2 == 0) ? 0.0f : 20.0f * ui);
         juce::Justification just = juce::Justification::centred;
         juce::Rectangle<float> box = labelBoxFor (i, lr, just);
+        const float nudgeStep = 12.0f * ui;
 
         for (int nudge = 0; nudge < 8 && havePrev
-             && box.expanded (3.0f, 2.0f).intersects (prevBox); ++nudge)
+             && box.expanded (3.0f * ui, 2.0f * ui).intersects (prevBox); ++nudge)
         {
             juce::Justification dummy = juce::Justification::centred;
-            const bool outClear = ! labelBoxFor (i, lr + 12.0f, dummy).expanded (3.0f, 2.0f).intersects (prevBox);
-            const bool inClear  = ! labelBoxFor (i, lr - 12.0f, dummy).expanded (3.0f, 2.0f).intersects (prevBox);
-            if (outClear && ! inClear)      lr += 12.0f;
-            else if (inClear && ! outClear) lr -= 12.0f;
-            else if (outClear)              lr += 12.0f; // both clear: prefer outward
+            const bool outClear = ! labelBoxFor (i, lr + nudgeStep, dummy).expanded (3.0f * ui, 2.0f * ui).intersects (prevBox);
+            const bool inClear  = ! labelBoxFor (i, lr - nudgeStep, dummy).expanded (3.0f * ui, 2.0f * ui).intersects (prevBox);
+            if (outClear && ! inClear)      lr += nudgeStep;
+            else if (inClear && ! outClear) lr -= nudgeStep;
+            else if (outClear)              lr += nudgeStep; // both clear: prefer outward
             else
             {
                 // neither clears on its own: step away from the neighbour's centre
                 const float a = detentAngle (i);
                 const float away = (box.getCentreX() - prevBox.getCentreX()) * std::cos (a)
                                  + (box.getCentreY() - prevBox.getCentreY()) * std::sin (a);
-                lr += (away >= 0.0f ? 12.0f : -12.0f);
+                lr += (away >= 0.0f ? nudgeStep : -nudgeStep);
             }
-            lr = juce::jlimit (labelR - 24.0f, labelR + 84.0f, lr);
+            lr = juce::jlimit (labelR - 24.0f * ui, labelR + 84.0f * ui, lr);
             box = labelBoxFor (i, lr, just);
         }
 
@@ -328,7 +376,7 @@ void LevelMeter::paint (juce::Graphics& g)
         g.setColour (juce::Colours::white.withAlpha (0.8f));
         g.fillRect (px - 1, y, 2.0f, h);
 
-        g.setFont (fontBold (10.0f));
+        g.setFont (fontBold (10.0f * uiScale));
         g.setColour (cDim);
         g.drawText (ch == 0 ? "L" : "R", 0.0f, y, 16.0f, h, juce::Justification::centredLeft, true);
     }
@@ -398,8 +446,9 @@ void GlyphButton::mouseDown (const juce::MouseEvent&)
 void GlyphButton::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
+    const float ui = (float) juce::jmin (getWidth(), getHeight()) / 30.0f; // 1.0 at design size
     g.setColour (hover ? cPanel2.brighter (0.12f) : juce::Colours::transparentBlack);
-    g.fillRoundedRectangle (r, 6.0f);
+    g.fillRoundedRectangle (r, 6.0f * ui);
 
     const float cx = r.getCentreX(), cy = r.getCentreY();
     g.setColour (active ? juce::Colour (0xffe8c33a) : cDim);
@@ -412,38 +461,38 @@ void GlyphButton::paint (juce::Graphics& g)
             for (int i = 0; i < 10; ++i)
             {
                 const float ang = -juce::MathConstants<float>::halfPi + i * juce::MathConstants<float>::pi / 5.0f;
-                const float rad = (i % 2 == 0) ? 8.0f : 3.6f;
+                const float rad = ((i % 2 == 0) ? 8.0f : 3.6f) * ui;
                 const float px = cx + std::cos (ang) * rad, py = cy + std::sin (ang) * rad;
                 if (i == 0) star.startNewSubPath (px, py);
                 else        star.lineTo (px, py);
             }
             star.closeSubPath();
             if (active) g.fillPath (star);
-            else        g.strokePath (star, juce::PathStrokeType (1.6f));
+            else        g.strokePath (star, juce::PathStrokeType (1.6f * ui));
             break;
         }
         case Save:
-            g.drawRoundedRectangle (cx - 7, cy - 8, 14, 16, 2.0f, 1.8f);
-            g.fillRect (cx - 3.0f, cy - 8.0f, 6.0f, 5.0f);
-            g.drawLine (cx - 7, cy + 2, cx + 7, cy + 2, 1.4f);
+            g.drawRoundedRectangle (cx - 7 * ui, cy - 8 * ui, 14 * ui, 16 * ui, 2.0f * ui, 1.8f * ui);
+            g.fillRect (cx - 3.0f * ui, cy - 8.0f * ui, 6.0f * ui, 5.0f * ui);
+            g.drawLine (cx - 7 * ui, cy + 2 * ui, cx + 7 * ui, cy + 2 * ui, 1.4f * ui);
             break;
         case Settings:
         {
-            g.drawEllipse (cx - 6, cy - 6, 12, 12, 1.8f);
+            g.drawEllipse (cx - 6 * ui, cy - 6 * ui, 12 * ui, 12 * ui, 1.8f * ui);
             for (int i = 0; i < 8; ++i)
             {
                 const float ang = i * juce::MathConstants<float>::pi / 4.0f;
-                g.drawLine (cx + std::cos (ang) * 7.5f, cy + std::sin (ang) * 7.5f,
-                            cx + std::cos (ang) * 10.0f, cy + std::sin (ang) * 10.0f, 1.8f);
+                g.drawLine (cx + std::cos (ang) * 7.5f * ui, cy + std::sin (ang) * 7.5f * ui,
+                            cx + std::cos (ang) * 10.0f * ui, cy + std::sin (ang) * 10.0f * ui, 1.8f * ui);
             }
             break;
         }
         case ArrowLeft:
-            g.setFont (fontBold (18.0f));
+            g.setFont (fontBold (18.0f * ui));
             g.drawText ("<", r, juce::Justification::centred, true);
             break;
         case ArrowRight:
-            g.setFont (fontBold (18.0f));
+            g.setFont (fontBold (18.0f * ui));
             g.drawText (">", r, juce::Justification::centred, true);
             break;
     }
@@ -464,15 +513,16 @@ void PresetDisplay::paint (juce::Graphics& g)
 {
     auto r = getLocalBounds().toFloat();
     g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.fillRoundedRectangle (r, 8.0f);
+    g.fillRoundedRectangle (r, 8.0f * uiScale);
     g.setColour (cEdge);
-    g.drawRoundedRectangle (r, 8.0f, 1.0f);
+    g.drawRoundedRectangle (r, 8.0f * uiScale, 1.0f);
 
-    drawGlowText (g, name, { r.getX(), r.getY() + 6, r.getWidth(), 26 },
-                  fontBold (21.0f), cBlue);
-    g.setFont (fontPlain (11.5f));
+    drawGlowText (g, name, { r.getX(), r.getY() + 6 * uiScale, r.getWidth(), 26 * uiScale },
+                  fontBold (21.0f * uiScale), cBlue);
+    g.setFont (fontPlain (11.5f * uiScale));
     g.setColour (cDim);
-    g.drawText (desc, juce::Rectangle<float> (r.getX() + 8, r.getY() + 34, r.getWidth() - 16, 20.0f),
+    g.drawText (desc, juce::Rectangle<float> (r.getX() + 8 * uiScale, r.getY() + 34 * uiScale,
+                                              r.getWidth() - 16 * uiScale, 20.0f * uiScale),
                 juce::Justification::centred, true);
 }
 
@@ -578,6 +628,7 @@ ShiftFxEditor::ShiftFxEditor (ShiftFxProcessor& p)
 
     dryWetKnob = std::make_unique<TfxKnob> (64.0f, cBlue);
     dryWetKnob->setLearnable (ShiftFxProcessor::LearnDryWet);
+    dryWetKnob->setDefaultValue (1.0f); // double-click reset = parameter default
     dryWetKnob->onChange = [this] (float v)
         { setParam01 (ShiftFxProcessor::pidDryWet, v); };
     dryWetKnob->onLearnArm = [this] (int li) { armLearn (li); };
@@ -585,6 +636,7 @@ ShiftFxEditor::ShiftFxEditor (ShiftFxProcessor& p)
 
     outMixKnob = std::make_unique<TfxKnob> (64.0f, cBlue);
     outMixKnob->setLearnable (ShiftFxProcessor::LearnOutMix);
+    outMixKnob->setDefaultValue (0.9091f); // double-click reset = 0 dB
     outMixKnob->onChange = [this] (float v)
         { setParam01 (ShiftFxProcessor::pidOutMix, v); };
     outMixKnob->onLearnArm = [this] (int li) { armLearn (li); };
@@ -627,6 +679,19 @@ ShiftFxEditor::ShiftFxEditor (ShiftFxProcessor& p)
     outMixKnob->setValue (pOutMix->getValue(), false);
     bpmSourceBox.setSelectedId (pBpmSrc->getValue() > 0.5f ? 2 : 1, juce::dontSendNotification);
 
+    // z-order audit: the preset wheel's bounds overlap the top edge of the
+    // bottom-bar knobs, so make sure the interactive controls sit on top and
+    // reliably receive mouse events across their full visible area.
+    dryWetKnob->toFront (false);
+    outMixKnob->toFront (false);
+    powerButton->toFront (false);
+
+    // resizable window: 12:7 aspect locked, corner resizer visible.
+    setResizable (true, true);
+    setResizeLimits (960, 560, 1800, 1050);
+    if (auto* boundsConstrainer = getConstrainer())
+        boundsConstrainer->setFixedAspectRatio (1200.0 / 700.0);
+
     setSize (1200, 700);
     startTimerHz (30);
 }
@@ -639,47 +704,72 @@ ShiftFxEditor::~ShiftFxEditor()
 //==============================================================================
 void ShiftFxEditor::resized()
 {
+    // Fully proportional layout: uniform scale s (aspect ratio is locked to
+    // 12:7 by the constrainer, so sx == sy). Every bound derives from s.
+    const float s = (float) getWidth() / 1200.0f;
+    auto B = [s] (float x, float y, float w, float h)
+    {
+        return juce::Rectangle<int> (juce::roundToInt (x * s), juce::roundToInt (y * s),
+                                     juce::roundToInt (w * s), juce::roundToInt (h * s));
+    };
+
     // Top bar (0..96)
-    bpmLabel.setBounds (296, 44, 130, 34);
-    bpmSourceBox.setBounds (440, 46, 132, 26);
-    tapButton.setBounds (580, 46, 62, 26);
+    bpmLabel.setBounds (B (296, 44, 130, 34));
+    bpmLabel.setFont (fontBold (24.0f * s));
+    bpmSourceBox.setBounds (B (440, 46, 132, 26));
+    tapButton.setBounds (B (580, 46, 62, 26));
 
-    presetArrowL->setBounds (688, 40, 30, 34);
-    presetDisplay->setBounds (722, 40, 210, 34);
-    presetArrowR->setBounds (936, 40, 30, 34);
-    starButton->setBounds (974, 42, 30, 30);
-    saveButton->setBounds (1008, 42, 30, 30);
-    settingsButton->setBounds (1042, 42, 30, 30);
+    presetArrowL->setBounds (B (688, 40, 30, 34));
+    presetDisplay->setBounds (B (722, 40, 210, 34));
+    presetArrowR->setBounds (B (936, 40, 30, 34));
+    starButton->setBounds (B (974, 42, 30, 30));
+    saveButton->setBounds (B (1008, 42, 30, 30));
+    settingsButton->setBounds (B (1042, 42, 30, 30));
 
-    inMeterTop->setBounds (1100, 14, 88, 30);
-    outMeterTop->setBounds (1100, 50, 88, 30);
+    inMeterTop->setBounds (B (1100, 14, 88, 30));
+    outMeterTop->setBounds (B (1100, 50, 88, 30));
 
     // Center (96..560): FX TYPE display + giant wheel
-    centerArrowL->setBounds (392, 116, 32, 62);
-    centerDisplay->setBounds (430, 116, 340, 62);
-    centerArrowR->setBounds (776, 116, 32, 62);
-    presetWheel->setBounds (310, 149, 580, 450);
+    centerArrowL->setBounds (B (392, 116, 32, 62));
+    centerDisplay->setBounds (B (430, 116, 340, 62));
+    centerArrowR->setBounds (B (776, 116, 32, 62));
+    presetWheel->setBounds (B (310, 149, 580, 450));
 
     // Bottom bar (560..700)
-    inMeterBottom->setBounds (44, 586, 220, 52);
-    dryWetKnob->setBounds (300, 572, 80, 80);
-    outMixKnob->setBounds (440, 572, 80, 80);
-    powerButton->setBounds (620, 576, 84, 72);
-    learnButton.setBounds (1040, 586, 120, 34);
-    learnStatusLabel.setBounds (1040, 624, 150, 22);
+    inMeterBottom->setBounds (B (44, 586, 220, 52));
+    dryWetKnob->setBounds (B (300, 572, 80, 80));
+    outMixKnob->setBounds (B (440, 572, 80, 80));
+    powerButton->setBounds (B (620, 576, 84, 72));
+    learnButton.setBounds (B (1040, 586, 120, 34));
+    learnStatusLabel.setBounds (B (1040, 624, 150, 22));
+    learnStatusLabel.setFont (fontPlain (10.5f * s));
+
+    // scale-aware sub-component fonts
+    presetDisplay->setUiScale (s);
+    centerDisplay->setUiScale (s);
+    inMeterTop->setUiScale (s);
+    outMeterTop->setUiScale (s);
+    inMeterBottom->setUiScale (s);
 }
 
 void ShiftFxEditor::paint (juce::Graphics& g)
 {
+    // Scale all of the hand-drawn artwork below with the window size
+    // (aspect ratio is locked, so one uniform scale factor is exact).
+    const float s = (float) getWidth() / 1200.0f;
+    g.addTransform (juce::AffineTransform::scale (s, s));
+
+    // NB: below this point all coordinates are in DESIGN space (1200x700);
+    // use literal design dimensions, not getWidth()/getHeight().
     g.fillAll (cBg);
 
     // subtle top-bar / bottom-bar panels
     g.setColour (cPanel);
-    g.fillRect (0, 0, getWidth(), 96);
-    g.fillRect (0, 560, getWidth(), getHeight() - 560);
+    g.fillRect (0, 0, 1200, 96);
+    g.fillRect (0, 560, 1200, 140);
     g.setColour (cEdge);
-    g.drawLine (0, 96, (float) getWidth(), 96, 1.0f);
-    g.drawLine (0, 560, (float) getWidth(), 560, 1.0f);
+    g.drawLine (0, 96, 1200.0f, 96, 1.0f);
+    g.drawLine (0, 560, 1200.0f, 560, 1.0f);
 
     //---- logo ----------------------------------------------------------------------
     g.setFont (fontBold (26.0f));
@@ -714,7 +804,7 @@ void ShiftFxEditor::paint (juce::Graphics& g)
     //---- FX TYPE heading ----------------------------------------------------------------
     g.setFont (fontPlain (13.0f));
     g.setColour (cDim);
-    g.drawText ("F X   T Y P E", 0, 96, getWidth(), 18, juce::Justification::centred, true);
+    g.drawText ("F X   T Y P E", 0, 96, 1200, 18, juce::Justification::centred, true);
 
     //---- bottom bar labels -------------------------------------------------------------------
     g.setFont (fontBold (10.5f));
@@ -805,8 +895,9 @@ void ShiftFxEditor::timerCallback()
         learnButton.setToggleState (false, juce::dontSendNotification);
     }
 
-    repaint (0, 0, getWidth(), 96);       // top bar (bpm text)
-    repaint (0, 560, getWidth(), 140);    // bottom bar labels
+    repaint (0, 0, getWidth(), juce::roundToInt (96.0f * (float) getWidth() / 1200.0f)); // top bar (bpm text)
+    repaint (0, juce::roundToInt (560.0f * (float) getWidth() / 1200.0f),
+             getWidth(), getHeight()); // bottom bar labels
 }
 
 //==============================================================================
