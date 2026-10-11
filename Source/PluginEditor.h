@@ -18,18 +18,24 @@ public:
     void setLearnable (int learnIdx) { this->learnIdx = learnIdx; }
     void setLearnModeActive (bool b) { learnMode = b; repaint(); }
     void setLearnHighlight (bool b) { learnHighlight = b; repaint(); }
+    void setDefaultValue (float v) { defaultValue = juce::jlimit (0.0f, 1.0f, v); }
 
     std::function<void(float)> onChange;
     std::function<void(int)>   onLearnArm;   // called with learnIdx when armed
 
     void paint (juce::Graphics& g) override;
     void mouseDown (const juce::MouseEvent& e) override;
+    void mouseUp (const juce::MouseEvent& e) override;
+    void mouseEnter (const juce::MouseEvent& e) override;
+    void mouseExit (const juce::MouseEvent& e) override;
+    void mouseDoubleClick (const juce::MouseEvent& e) override;
     void mouseDrag (const juce::MouseEvent& e) override;
     void mouseWheelMove (const juce::MouseEvent&,
                          const juce::MouseWheelDetails& wheel) override;
 
 private:
     float value = 0.0f;
+    float defaultValue = 0.5f;
     float dragStartVal = 0.0f;
     int   dragStartY = 0;
     float diameter;
@@ -58,6 +64,8 @@ public:
     void paint (juce::Graphics& g) override;
     void mouseDown (const juce::MouseEvent& e) override;
     void mouseDrag (const juce::MouseEvent& e) override;
+    void mouseEnter (const juce::MouseEvent& e) override;
+    void mouseExit (const juce::MouseEvent& e) override;
     void mouseWheelMove (const juce::MouseEvent&,
                          const juce::MouseWheelDetails& wheel) override;
 
@@ -76,10 +84,12 @@ class LevelMeter : public juce::Component
 {
 public:
     void setLevels (float l, float r);
+    void setUiScale (float s) { uiScale = s; repaint(); }
     void paint (juce::Graphics& g) override;
 private:
     float lv[2] = { 0.0f, 0.0f };
     float pk[2] = { 0.0f, 0.0f };
+    float uiScale = 1.0f;
 };
 
 // Backlit power button.
@@ -131,10 +141,12 @@ class PresetDisplay : public juce::Component
 {
 public:
     void setPreset (const ShiftFxProcessor::PresetDef& p, bool favorite);
+    void setUiScale (float s) { uiScale = s; repaint(); }
     void paint (juce::Graphics& g) override;
 private:
     juce::String name, desc;
     bool favorite = false;
+    float uiScale = 1.0f;
 };
 
 //==============================================================================
