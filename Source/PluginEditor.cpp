@@ -118,8 +118,12 @@ void TfxKnob::paint (juce::Graphics& g)
         g.drawEllipse (cx - r - 7 * ui, cy - r - 7 * ui, (r + 7 * ui) * 2, (r + 7 * ui) * 2, 2.0f * ui);
     }
 
-    // value arc
-    const float a0 = -2.35f, a1 = 2.35f; // ~ -135..135 deg
+    // value arc — standard hardware sweep: MIN at 7:00, MAX at 5:00,
+    // 300 degrees clockwise through 12:00. (JUCE angles: 0 = 3 o'clock,
+    // positive = clockwise.) The bottom dead zone (5:00 -> 6:00 -> 7:00)
+    // is never entered.
+    const float a0 = juce::MathConstants<float>::pi * 2.0f / 3.0f;     // 7:00
+    const float a1 = a0 + juce::MathConstants<float>::pi * 5.0f / 3.0f; // 5:00 (+300 deg)
     const float va = a0 + value * (a1 - a0);
     g.setColour (accent.withAlpha (0.9f));
     juce::Path arc;
@@ -139,8 +143,8 @@ void TfxKnob::paint (juce::Graphics& g)
     g.setColour (cEdge.brighter (0.15f));
     g.drawEllipse (cx - r, cy - r, r * 2, r * 2, 1.5f * ui);
 
-    // pointer line
-    const float pa = -juce::MathConstants<float>::pi * 0.75f + value * juce::MathConstants<float>::pi * 1.5f;
+    // pointer line — same angle as the value arc endpoint
+    const float pa = va;
     const float px = cx + std::cos (pa) * r * 0.78f, py = cy + std::sin (pa) * r * 0.78f;
     g.setColour (juce::Colours::white);
     g.drawLine (cx, cy, px, py, 3.0f * ui);
@@ -165,7 +169,9 @@ float PresetWheel::detentAngle (int idx)
 
 void PresetWheel::setPreset (int idx, bool notify)
 {
-    int ni = juce::jlimit (0, 22, idx);
+    // Full 360: dragging past the last detent wraps around to the first —
+    // no dead stop before 12:00. Detents stay evenly spaced (see detentAngle).
+    int ni = (idx % 23 + 23) % 23;
     if (ni != preset)
     {
         preset = ni;
@@ -561,6 +567,26 @@ ShiftFxEditor::ShiftFxEditor (ShiftFxProcessor& p)
     tapButton.onClick = [this] { doTapTempo(); };
     addAndMakeVisible (tapButton);
 
+    // Master beat division: segmented 4-button control (radio behavior).
+    const char* divLabels[4] = { "1/2", "1/4", "1/8", "1/16" };
+    for (int i = 0; i < 4; ++i)
+    {
+        beatDivButtons[i].setButtonText (divLabels[i]);
+        beatDivButtons[i].setRadioGroupId (0xBEA7);
+        beatDivButtons[i].setClickingTogglesState (true);
+        beatDivButtons[i].setColour (juce::TextButton::buttonColourId, cPanel2);
+        beatDivButtons[i].setColour (juce::TextButton::buttonOnColourId, cBlue.withAlpha (0.35f));
+        beatDivButtons[i].setColour (juce::TextButton::textColourOffId, cDim);
+        beatDivButtons[i].setColour (juce::TextButton::textColourOnId, cText);
+        int edges = 0;
+        if (i > 0) edges |= juce::Button::ConnectedOnLeft;
+        if (i < 3) edges |= juce::Button::ConnectedOnRight;
+        beatDivButtons[i].setConnectedEdges (edges);
+        const int bidx = i;
+        beatDivButtons[i].onClick = [this, bidx] { setBeatDivIndex (bidx); };
+        addAndMakeVisible (beatDivButtons[i]);
+    }
+
     presetArrowL = std::make_unique<GlyphButton> (GlyphButton::ArrowLeft);
     presetArrowR = std::make_unique<GlyphButton> (GlyphButton::ArrowRight);
     presetArrowL->onClick = [this] { stepPreset (-1); };
@@ -679,6 +705,12 @@ ShiftFxEditor::ShiftFxEditor (ShiftFxProcessor& p)
     outMixKnob->setValue (pOutMix->getValue(), false);
     bpmSourceBox.setSelectedId (pBpmSrc->getValue() > 0.5f ? 2 : 1, juce::dontSendNotification);
 
+    // master beat division buttons reflect the parameter
+    auto* pBeatDivInit = processor.apvts.getParameter (ShiftFxProcessor::pidBeatDiv);
+    const int initDiv = juce::jlimit (0, 3,
+        (int) pBeatDivInit->convertFrom0to1 (pBeatDivInit->getValue()));
+    beatDivButtons[initDiv].setToggleState (true, juce::dontSendNotification);
+
     // z-order audit: the preset wheel's bounds overlap the top edge of the
     // bottom-bar knobs, so make sure the interactive controls sit on top and
     // reliably receive mouse events across their full visible area.
@@ -692,7 +724,10 @@ ShiftFxEditor::ShiftFxEditor (ShiftFxProcessor& p)
     if (auto* boundsConstrainer = getConstrainer())
         boundsConstrainer->setFixedAspectRatio (1200.0 / 700.0);
 
-    setSize (1200, 700);
+    // restore the size the user left (persisted in plugin state); the
+    // constrainer snaps it to 12:7 and the resize limits if needed.
+    setSize (juce::jlimit (960, 1800, processor.editorWinW.load()),
+             juce::jlimit (560, 1050, processor.editorWinH.load()));
     startTimerHz (30);
 }
 
@@ -718,6 +753,10 @@ void ShiftFxEditor::resized()
     bpmLabel.setFont (fontBold (24.0f * s));
     bpmSourceBox.setBounds (B (440, 46, 132, 26));
     tapButton.setBounds (B (580, 46, 62, 26));
+
+    // master beat division: segmented control below the logo
+    for (int i = 0; i < 4; ++i)
+        beatDivButtons[i].setBounds (B (20.0f + (float) i * 54.0f, 70, 48, 24));
 
     presetArrowL->setBounds (B (688, 40, 30, 34));
     presetDisplay->setBounds (B (722, 40, 210, 34));
@@ -750,6 +789,9 @@ void ShiftFxEditor::resized()
     inMeterTop->setUiScale (s);
     outMeterTop->setUiScale (s);
     inMeterBottom->setUiScale (s);
+
+    // persist the window size so the next session reopens at the size left
+    processor.setEditorSize (getWidth(), getHeight());
 }
 
 void ShiftFxEditor::paint (juce::Graphics& g)
@@ -794,6 +836,7 @@ void ShiftFxEditor::paint (juce::Graphics& g)
     g.drawText ("BPM SOURCE", 440, 24, 132, 18, juce::Justification::centredLeft, true);
     g.setFont (fontBold (10.5f));
     g.drawText ("PRESET", 688, 20, 120, 16, juce::Justification::centredLeft, true);
+    g.drawText ("BEAT DIV", 20, 56, 120, 14, juce::Justification::centredLeft, true);
 
     // IN / OUT labels for top meters
     g.setFont (fontBold (10.0f));
@@ -882,6 +925,17 @@ void ShiftFxEditor::timerCallback()
     if (bpmSourceBox.getSelectedId() != wantBoxId)
         bpmSourceBox.setSelectedId (wantBoxId, juce::dontSendNotification);
 
+    // master beat division buttons follow the parameter (DAW automation)
+    auto* pBeatDiv = processor.apvts.getParameter (ShiftFxProcessor::pidBeatDiv);
+    const int divIdx = juce::jlimit (0, 3,
+        (int) pBeatDiv->convertFrom0to1 (pBeatDiv->getValue()));
+    for (int i = 0; i < 4; ++i)
+    {
+        const bool want = (i == divIdx);
+        if (beatDivButtons[i].getToggleState() != want)
+            beatDivButtons[i].setToggleState (want, juce::dontSendNotification);
+    }
+
     // MIDI learn completion event from the audio thread
     if (processor.learnEventFlag.exchange (false))
     {
@@ -928,6 +982,16 @@ void ShiftFxEditor::setPresetIndex (int idx)
 void ShiftFxEditor::stepPreset (int dir)
 {
     setPresetIndex (presetWheel->getPreset() + dir);
+}
+
+void ShiftFxEditor::setBeatDivIndex (int idx)
+{
+    if (auto* p = processor.apvts.getParameter (ShiftFxProcessor::pidBeatDiv))
+    {
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (p->convertTo0to1 ((float) juce::jlimit (0, 3, idx)));
+        p->endChangeGesture();
+    }
 }
 
 void ShiftFxEditor::doTapTempo()
