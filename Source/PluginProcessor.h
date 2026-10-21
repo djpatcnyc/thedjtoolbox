@@ -25,6 +25,7 @@ public:
     static constexpr const char* pidBpmSrc = "bpmSource";  // Choice: Host (DAW) / Manual
     static constexpr const char* pidBpm    = "bpmManual";  // Float 60..200
     static constexpr const char* pidTap    = "tapTempo";   // Bool momentary (UI trigger)
+    static constexpr const char* pidBeatDiv = "beatDiv";   // Choice: 1/2, 1/4, 1/8, 1/16 (master)
 
     // Parameters that can be MIDI-learned (indices into learnParamIds).
     enum Learnable { LearnPreset = 0, LearnDryWet = 1, LearnOutMix = 2, LearnOn = 3,
@@ -55,6 +56,9 @@ public:
 
     static constexpr int numPresets = 23;
     static const PresetDef presets[numPresets];
+
+    // STUTTER ROLL runs the roll engine in hard-chop (square-gate) mode.
+    static constexpr int presetStutterRoll = 6;
 
     static constexpr int numDivs = 8;
     static constexpr float presetDivBeats[numDivs] =
@@ -102,6 +106,15 @@ public:
     std::atomic<float> inLevelL { 0.0f }, inLevelR { 0.0f };
     std::atomic<float> outLevelL { 0.0f }, outLevelR { 0.0f };
 
+    //---- Editor window size (persisted in plugin state) -------------------------
+    std::atomic<int> editorWinW { 1200 };
+    std::atomic<int> editorWinH { 700 };
+    void setEditorSize (int w, int h)
+    {
+        editorWinW.store (juce::jlimit (960, 1800, w));
+        editorWinH.store (juce::jlimit (560, 1050, h));
+    }
+
     //---- MIDI learn ------------------------------------------------------------
     // learnArmed: which learnable param index is waiting for a CC (-1 = none).
     std::atomic<int>  learnArmed { -1 };
@@ -121,6 +134,10 @@ private:
     std::atomic<float>* pOutMix = nullptr;
     std::atomic<float>* pBpmSrc = nullptr;
     std::atomic<float>* pBpm    = nullptr;
+    std::atomic<float>* pBeatDiv = nullptr;
+
+    // Master beat-division in beats per division (1/2, 1/4, 1/8, 1/16).
+    static constexpr float masterDivBeats[4] = { 0.5f, 0.25f, 0.125f, 0.0625f };
 
     double currentSampleRate = 44100.0;
     juce::Array<int> favorites; // persisted in state
@@ -142,6 +159,7 @@ private:
     int   rollWritePos = 0;
     float rollReadPos  = 0.0f;
     bool  rollEngaged  = false;
+    float stutterPhase = 0.0f; // hard-chop gate phase (STUTTER ROLL only)
 
     //---- Reverb ---------------------------------------------------------------
     juce::dsp::Reverb reverb;
